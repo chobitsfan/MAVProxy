@@ -17,7 +17,8 @@ has_wxpython = False
 
 if platform.system() == 'Windows':
     # auto-detection is failing on windows, for an unknown reason
-    has_wxpython = True
+    #has_wxpython = True
+    pass
 else:
     import imp
     try:
