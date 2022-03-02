@@ -14,6 +14,8 @@
 
 # OptiTrack NatNet direct depacketization library for Python 3.x
 
+# modified by yuan-chu tai for mavproxy integration
+
 import socket
 import struct
 from threading import Thread
@@ -212,14 +214,13 @@ class NatNetClient:
 
 
     # Create a command socket to attach to the NatNet stream
-    def __create_command_socket( self, blocking=True ):
+    def __create_command_socket( self):
         result = None
         if self.use_multicast :
             # Multicast case
             result = socket.socket( socket.AF_INET, socket.SOCK_DGRAM, 0 )
             # allow multiple clients on same machine to use multicast group address/port
             result.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            result.setblocking(blocking)
             try:
                 result.bind( ('', 0) )
             except socket.error as msg:
@@ -242,8 +243,6 @@ class NatNetClient:
         else:
             # Unicast case
             result = socket.socket( socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-            if non_blocking:
-                result.setblocking(False)
             try:
                 result.bind( (self.local_ip_address, 0) )
             except socket.error as msg:
@@ -267,7 +266,7 @@ class NatNetClient:
         return result
 
     # Create a data socket to attach to the NatNet stream
-    def __create_data_socket( self, port, blocking=True ):
+    def __create_data_socket( self, port):
         result = None
 
         if self.use_multicast:
@@ -277,7 +276,6 @@ class NatNetClient:
                                   0)    # UDP
             result.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             result.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, socket.inet_aton(self.multicast_address) + socket.inet_aton(self.local_ip_address))
-            result.setblocking(blocking)
             try:
                 result.bind( (self.local_ip_address, port) )
             except socket.error as msg:
@@ -299,8 +297,6 @@ class NatNetClient:
                                   socket.SOCK_DGRAM,
                                   socket.IPPROTO_UDP)
             result.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            if non_blocking:
-                result.setblocking(False)
             #result.bind( (self.local_ip_address, port) )
             try:
                 result.bind( ('', 0) )
@@ -367,10 +363,10 @@ class NatNetClient:
             if major >= 2:
                 # Marker ID's
                 for i in marker_count_range:
-                    new_id = int.from_bytes( data[offset:offset+4], byteorder='little' )
+                    marker_id = int.from_bytes( data[offset:offset+4], byteorder='little' )
                     offset += 4
-                    trace_mf( "\tMarker ID", i, ":", new_id )
-                    rb_marker_list[i].id=new_id
+                    trace_mf( "\tMarker ID", i, ":", marker_id )
+                    rb_marker_list[i].id=marker_id
 
                 # Marker sizes
                 for i in marker_count_range:
@@ -427,7 +423,7 @@ class NatNetClient:
 
         return offset, skeleton
 
-#Unpack Mocap Data Functions
+    #Unpack Mocap Data Functions
     def __unpack_frame_prefix_data( self, data):
         offset = 0
         # Frame number (4 bytes)
@@ -1440,22 +1436,40 @@ class NatNetClient:
         self.data_thread.join()
 
     def process_data_and_cmd(self):
-        data = self.data_socket.recv(64*1024)
-        if len(data) > 0:
-            self.__process_message(data, 0)
-        data = self.commande_socket.recv(64*1024)
-        if len(data) > 0:
-            self.__process_message(data, 0)
+        while True:
+            try:
+                data = self.data_socket.recv(64*1024)
+            except socket.error as err:
+                if err.errno != 10035: # WSAEWOULDBLOCK 
+                    print(err)
+                break;
+            if len(data) > 0:
+                self.__process_message(data)
+            else:
+                break
+        while True:
+            try:
+                data = self.command_socket.recv(64*1024)
+            except socket.error as err:
+                if err.errno != 10035: # WSAEWOULDBLOCK 
+                    print(err)
+                break;
+            if len(data) > 0:
+                self.__process_message(data)
+            else:
+                break
         
     def setup_sdk(self):
         # Create the data socket
-        self.data_socket = self.__create_data_socket(self.data_port, False)
+        self.data_socket = self.__create_data_socket(self.data_port)
+        self.data_socket.setblocking(False)
         if self.data_socket is None :
             print( "Could not open data channel" )
             return False
 
         # Create the command socket
-        self.command_socket = self.__create_command_socket(False)
+        self.command_socket = self.__create_command_socket()
+        self.command_socket.setblocking(False)
         if self.command_socket is None :
             print( "Could not open command channel" )
             return False
