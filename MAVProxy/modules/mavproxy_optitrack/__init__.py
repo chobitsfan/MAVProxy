@@ -27,11 +27,9 @@ class optitrack(mp_module.MPModule):
 
     # This is a callback function that gets connected to the NatNet client. It is called once per rigid body per frame
     def receive_rigid_body_frame(self, new_id, position, rotation, tracking_valid):
-        #print("receive_rigid_body_frame", new_id, tracking_valid)
         if (tracking_valid and new_id == self.optitrack_settings.obj_id):
             now = time.time()
             if (now - self.last_msg_time) > (self.optitrack_settings.msg_intvl_ms * 0.001):
-                print("send att_pos_mocap")
                 time_us = int(now * 1.0e6)
                 self.master.mav.att_pos_mocap_send(time_us, (rotation[3], rotation[0], rotation[2], -rotation[1]), position[0], position[2], -position[1])
                 self.last_msg_time = now
@@ -41,12 +39,10 @@ class optitrack(mp_module.MPModule):
         return "Usage: optitrack <start|set>"
 
     def cmd_start(self):
-        #self.streaming_client.set_client_address(self.optitrack_settings.client)
-        #self.streaming_client.set_server_address(self.optitrack_settings.server)
+        self.streaming_client.set_client_address(self.optitrack_settings.client)
+        self.streaming_client.set_server_address(self.optitrack_settings.server)
         self.streaming_client.setup_sdk()
         self.started = True
-
-        #self.streaming_client.run()
 
     def cmd_optitrack(self, args):
         '''control behaviour of the module'''

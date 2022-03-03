@@ -18,7 +18,6 @@
 
 import socket
 import struct
-from threading import Thread
 import copy
 import time
 from MAVProxy.modules.mavproxy_optitrack import DataDescriptions
@@ -1389,75 +1388,31 @@ class NatNetClient:
     def get_server_version(self):
         return self.__server_version
 
-    def run( self ):
-        # Create the data socket
-        self.data_socket = self.__create_data_socket( self.data_port )
-        if self.data_socket is None :
-            print( "Could not open data channel" )
-            return False
-
-        # Create the command socket
-        self.command_socket = self.__create_command_socket()
-        if self.command_socket is None :
-            print( "Could not open command channel" )
-            return False
-        self.__is_locked = True
-
-        self.stop_threads = False
-        # Create a separate thread for receiving data packets
-        self.data_thread = Thread( target = self.__data_thread_function, args = (self.data_socket, lambda : self.stop_threads, lambda : self.print_level, ))
-        self.data_thread.start()
-
-        # Create a separate thread for receiving command packets
-        self.command_thread = Thread( target = self.__command_thread_function, args = (self.command_socket, lambda : self.stop_threads, lambda : self.print_level,))
-        self.command_thread.start()
-
-        # Required for setup
-        # Get NatNet and server versions
-        self.send_request(self.command_socket, self.NAT_CONNECT, "",  (self.server_ip_address, self.command_port) )
-
-
-        ##Example Commands
-        ## Get NatNet and server versions
-        #self.send_request(self.command_socket, self.NAT_CONNECT, "", (self.server_ip_address, self.command_port) )
-        ## Request the model definitions
-        #self.send_request(self.command_socket, self.NAT_REQUEST_MODELDEF, "",  (self.server_ip_address, self.command_port) )
-        return True
-
-    def shutdown(self):
-        print("shutdown called")
-        self.stop_threads = True
-        # closing sockets causes blocking recvfrom to throw
-        # an exception and break the loop
-        self.command_socket.close()
-        self.data_socket.close()
-        # attempt to join the threads back.
-        self.command_thread.join()
-        self.data_thread.join()
-
     def process_data_and_cmd(self):
-        while True:
+        while True: # process as many data as possible
             try:
                 data = self.data_socket.recv(64*1024)
             except socket.error as err:
                 if err.errno != 10035: # WSAEWOULDBLOCK 
-                    print(err)
+                    print('optitrack', err)
                 break;
-            if len(data) > 0:
-                self.__process_message(data)
             else:
-                break
+                if len(data) > 0:
+                    self.__process_message(data)
+                else:
+                    break
         while True:
             try:
                 data = self.command_socket.recv(64*1024)
             except socket.error as err:
                 if err.errno != 10035: # WSAEWOULDBLOCK 
-                    print(err)
+                    print('optitrack', err)
                 break;
-            if len(data) > 0:
-                self.__process_message(data)
             else:
-                break
+                if len(data) > 0:
+                    self.__process_message(data)
+                else:
+                    break
         
     def setup_sdk(self):
         # Create the data socket
